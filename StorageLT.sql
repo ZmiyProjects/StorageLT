@@ -88,6 +88,30 @@ CREATE OR ALTER FUNCTION HR.previous_inter(@EmployeeId INT) RETURNS TABLE AS
 	ORDER BY I.IEnd DESC
     OFFSET 1 ROWS FETCH NEXT 1 ROWS ONLY );
 GO
+-- Возвращает количество товаров на всех складах
+CREATE FUNCTION Wares.all_products() RETURNS TABLE AS
+    RETURN (
+        SELECT P.ProductName, S.StorageAddress, ISNULL(A.Quantity, 0) FROM Wares.Storage As S
+            CROSS JOIN Wares.Product AS P
+            LEFT OUTER JOIN Wares.Accommodation AS A ON S.StorageId = A.StorageId AND P.ProductId = A.ProductId);
+GO
+-- Возвращает суммарное количество определенного товара с учетом всех складов
+CREATE FUNCTION Wares.product_quantity(@ProductId INT) RETURNS INT AS
+    BEGIN
+        RETURN (SELECT SUM(Quantity) FROM Accommodation WHERE ProductId = @ProductId);
+    END
+GO
+-- Возвращает суммарное количество определенного товара с учетом всех складов в виде строки формата
+-- <название товара>: <количество>
+CREATE FUNCTION Wares.product_quantity_string(@ProductId INT) RETURNS VARCHAR(5) AS
+    BEGIN
+        RETURN (
+            SELECT  CONCAT(P.ProductName, ': ', CAST(SUM(Quantity) AS VARCHAR(5))) FROM Wares.Accommodation AS A
+                JOIN Wares.Product AS P ON P.ProductId = A.ProductId AND P.ProductId = @ProductId
+            GROUP BY P.ProductName
+            );
+    END
+GO
 CREATE OR ALTER TRIGGER HR.check_interchange ON HR.Interchange AFTER INSERT, UPDATE AS
     BEGIN
 	  IF EXISTS (
@@ -219,26 +243,18 @@ CREATE USER Operator FOR LOGIN StorageLTOperator;
 
 CREATE USER Customer FOR LOGIN StorageLTCustomer;
 
-SELECT P.ProductName, ISNULL(A.Quantity, 0), S.StorageAddress FROM Wares.Product AS P
-    LEFT OUTER JOIN Wares.Accommodation As A ON P.ProductId = A.ProductId
-    LEFT OUTER JOIN Wares.Storage AS S ON A.StorageId = S.StorageId;
+-- определение прав доступа
+-- Operator
+GRANT SELECT, INSERT, UPDATE, DELETE ON SCHEMA::Wares TO Operator;
+DENY UPDATE, DELETE ON Wares.Storage TO Operator;
 
-GO
--- Возвращает наличие товаров на всех складах
-CREATE FUNCTION Wares.all_products() RETURNS TABLE AS
-    RETURN (
-        SELECT P.ProductName, S.StorageAddress, ISNULL(A.Quantity, 0) FROM Wares.Storage As S
-            CROSS JOIN Wares.Product AS P
-            LEFT OUTER JOIN Wares.Accommodation AS A ON S.StorageId = A.StorageId AND P.ProductId = A.ProductId);
-GO
-CREATE FUNCTION Wares.product_quantity(@ProductId INT) RETURNS INT AS
-    BEGIN
-        RETURN (SELECT SUM(Quantity) FROM Accommodation WHERE ProductId = @ProductId);
-    END
-GO
+-- Manager
+GRANT SELECT, INSERT, UPDATE, DELETE ON SCHEMA::HR TO Manager;
+DENY INSERT, UPDATE, DELETE ON HR.Position TO Manager;
+DENY UPDATE ON HR.Employee(HireDate, BirthDate) TO Manager;
+GRANT SELECT ON Wares.Storage TO Manager;
 
-SELECT  CONCAT(P.ProductName, ': ', CAST(SUM(Quantity) AS VARCHAR(5))) FROM Wares.Accommodation AS A
-    JOIN Wares.Product AS P ON P.ProductId = A.ProductId AND P.ProductId = 1
-GROUP BY P.ProductName;
-
-
+-- Customer
+GRANT EXECUTE ON Wares.all_products TO Customer;
+GRANT SELECT ON Wares.product_quantity TO Customer;
+GRANT SELECT ON Wares.product_quantity_string TO Customer;
