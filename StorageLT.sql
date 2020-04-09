@@ -219,5 +219,26 @@ CREATE USER Operator FOR LOGIN StorageLTOperator;
 
 CREATE USER Customer FOR LOGIN StorageLTCustomer;
 
+SELECT P.ProductName, ISNULL(A.Quantity, 0), S.StorageAddress FROM Wares.Product AS P
+    LEFT OUTER JOIN Wares.Accommodation As A ON P.ProductId = A.ProductId
+    LEFT OUTER JOIN Wares.Storage AS S ON A.StorageId = S.StorageId;
+
+GO
+-- Возвращает наличие товаров на всех складах
+CREATE FUNCTION Wares.all_products() RETURNS TABLE AS
+    RETURN (
+        SELECT P.ProductName, S.StorageAddress, ISNULL(A.Quantity, 0) FROM Wares.Storage As S
+            CROSS JOIN Wares.Product AS P
+            LEFT OUTER JOIN Wares.Accommodation AS A ON S.StorageId = A.StorageId AND P.ProductId = A.ProductId);
+GO
+CREATE FUNCTION Wares.product_quantity(@ProductId INT) RETURNS INT AS
+    BEGIN
+        RETURN (SELECT SUM(Quantity) FROM Accommodation WHERE ProductId = @ProductId);
+    END
+GO
+
+SELECT  CONCAT(P.ProductName, ': ', CAST(SUM(Quantity) AS VARCHAR(5))) FROM Wares.Accommodation AS A
+    JOIN Wares.Product AS P ON P.ProductId = A.ProductId AND P.ProductId = 1
+GROUP BY P.ProductName;
 
 
